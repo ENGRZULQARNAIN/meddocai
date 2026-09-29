@@ -1,0 +1,8 @@
+scrape_configs:
+  - job_name: fastapi
+    static_configs: [{targets: ["api:8000"]}]
+  # add these once the exporters are wired up (see project notes):
+  # - job_name: redis
+  #   static_configs: [{targets: ["redis-exporter:9121"]}]
+  # - job_name: temporal
+  #   static_configs: [{targets: ["temporal:9090"]}]

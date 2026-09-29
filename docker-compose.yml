@@ -1,0 +1,92 @@
+# Base service definitions shared by every environment.
+# Local development merges this with docker-compose.override.yml
+# automatically (Docker Compose's default behavior).
+# Staging/production instead run explicitly with their own file, e.g.:
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+# and never load docker-compose.override.yml at all.
+
+services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: ${BUILD_TARGET:-dev}
+    env_file: .env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    networks: [meddocai]
+
+  temporal-worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: ${BUILD_TARGET:-dev}
+    command: python -m app.workflows.worker
+    env_file: .env
+    depends_on:
+      - temporal
+    networks: [meddocai]
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks: [meddocai]
+
+  # Cache + rate limiting only (no task queue role — Temporal owns all
+  # background/durable execution; see temporal-worker above).
+  redis:
+    image: redis:7-alpine
+    networks: [meddocai]
+
+  minio:
+    image: cgr.dev/chainguard/minio
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${OBJECT_STORAGE_ACCESS_KEY}
+      MINIO_ROOT_PASSWORD: ${OBJECT_STORAGE_SECRET_KEY}
+    volumes:
+      - minio-data:/data
+    networks: [meddocai]
+
+  temporal:
+    image: temporalio/auto-setup:latest
+    environment:
+      DB: postgres12
+      DB_PORT: ${POSTGRES_PORT}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PWD: ${POSTGRES_PASSWORD}
+      POSTGRES_SEEDS: postgres
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks: [meddocai]
+
+  prometheus:
+    image: prom/prometheus:latest
+    volumes:
+      - ./docker/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    networks: [meddocai]
+
+  grafana:
+    image: grafana/grafana:latest
+    networks: [meddocai]
+
+networks:
+  meddocai:
+
+volumes:
+  postgres-data:
+  minio-data:

@@ -1,0 +1,22 @@
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+dist/
+build/
+.DS_Store
+
+# never commit real env files — only .env.example is tracked
+.env
+.env.*
+!.env.example
+
+# local-only data volumes if ever bind-mounted
+postgres-data/
+minio-data/

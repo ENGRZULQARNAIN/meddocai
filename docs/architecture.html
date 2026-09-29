@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>MedDocAI — Architecture</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  :root{
+    --bg:#0f1420; --panel:#161d2e; --panel-2:#1d2740; --border:#2a3550;
+    --text:#e7ebf5; --muted:#93a1c2; --accent:#5b8cff; --accent-2:#7dd6ff;
+    --api:#5b8cff; --worker:#ffb454; --data:#43d19e; --infra:#c792ea; --obs:#ff6e6e; --ui:#7dd6ff;
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0; background:var(--bg); color:var(--text);
+    font-family:-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;
+    padding:24px 24px 64px;
+  }
+  h1{font-size:22px; margin:0 0 4px}
+  .subtitle{color:var(--muted); font-size:14px; margin:0 0 24px}
+  .layout{display:grid; grid-template-columns:1fr 340px; gap:20px; align-items:start}
+  @media (max-width:980px){ .layout{grid-template-columns:1fr} }
+
+  .board{
+    background:var(--panel); border:1px solid var(--border); border-radius:14px;
+    padding:20px; position:relative;
+  }
+  .row{display:flex; gap:14px; margin-bottom:14px; flex-wrap:wrap}
+  .row-label{
+    font-size:11px; text-transform:uppercase; letter-spacing:.08em; color:var(--muted);
+    width:100%; margin:18px 0 8px; padding-top:10px; border-top:1px dashed var(--border);
+  }
+  .row-label:first-child{margin-top:0; padding-top:0; border-top:none}
+
+  .node{
+    flex:1 1 150px; min-width:140px; background:var(--panel-2); border:1px solid var(--border);
+    border-left:4px solid var(--accent); border-radius:10px; padding:10px 12px; cursor:pointer;
+    transition:transform .12s ease, box-shadow .12s ease, border-color .12s ease;
+  }
+  .node:hover, .node.active{
+    transform:translateY(-2px); box-shadow:0 6px 18px rgba(0,0,0,.35); border-color:var(--accent-2);
+  }
+  .node .name{font-weight:600; font-size:13.5px}
+  .node .tag{display:block; font-size:11px; color:var(--muted); margin-top:2px}
+  .node .port{display:inline-block; margin-top:6px; font-size:10.5px; background:#0f1420;
+    border:1px solid var(--border); border-radius:6px; padding:1px 6px; color:var(--accent-2)}
+
+  .cat-api{border-left-color:var(--api)}
+  .cat-worker{border-left-color:var(--worker)}
+  .cat-data{border-left-color:var(--data)}
+  .cat-infra{border-left-color:var(--infra)}
+  .cat-obs{border-left-color:var(--obs)}
+  .cat-ui{border-left-color:var(--ui)}
+
+  .legend{display:flex; gap:14px; flex-wrap:wrap; margin:14px 0 6px; font-size:12px; color:var(--muted)}
+  .legend span{display:inline-flex; align-items:center; gap:6px}
+  .dot{width:10px; height:10px; border-radius:3px; display:inline-block}
+
+  .panel{
+    background:var(--panel); border:1px solid var(--border); border-radius:14px;
+    padding:20px; position:sticky; top:24px; min-height:360px;
+  }
+  .panel h2{margin:0 0 6px; font-size:17px}
+  .panel .kind{color:var(--accent-2); font-size:12px; text-transform:uppercase; letter-spacing:.06em; margin-bottom:14px}
+  .panel p{font-size:13.5px; line-height:1.55; color:var(--text)}
+  .panel .muted{color:var(--muted)}
+  .panel ul{margin:8px 0 0; padding-left:18px; font-size:13px; color:var(--muted)}
+  .panel .hint{color:var(--muted); font-size:13px}
+  .badge-row{display:flex; gap:6px; flex-wrap:wrap; margin-top:10px}
+  .badge{font-size:11px; background:#0f1420; border:1px solid var(--border); color:var(--accent-2);
+    border-radius:6px; padding:2px 8px}
+
+  .flows{
+    background:var(--panel); border:1px solid var(--border); border-radius:14px;
+    padding:20px; margin-top:20px;
+  }
+  .flows h2{margin:0 0 10px; font-size:16px}
+  .flow{font-size:13.5px; line-height:1.7; margin-bottom:10px; color:var(--text)}
+  .flow b{color:var(--accent-2)}
+  code{background:#0f1420; border:1px solid var(--border); padding:1px 5px; border-radius:5px; font-size:12px}
+</style>
+</head>
+<body>
+
+<h1>MedDocAI — local architecture</h1>
+<p class="subtitle">Click any box for an explanation. Ports shown are the host-side ports from your <code>.env</code> (dev only, via docker-compose.override.yml).</p>
+
+<div class="legend">
+  <span><i class="dot" style="background:var(--api)"></i>App code</span>
+  <span><i class="dot" style="background:var(--worker)"></i>Background work</span>
+  <span><i class="dot" style="background:var(--data)"></i>Data stores</span>
+  <span><i class="dot" style="background:var(--infra)"></i>Infra / brokers</span>
+  <span><i class="dot" style="background:var(--obs)"></i>Observability</span>
+  <span><i class="dot" style="background:var(--ui)"></i>Dev UIs</span>
+</div>
+
+<div class="layout">
+  <div class="board" id="board">
+
+    <div class="row-label">Entry point</div>
+    <div class="row">
+      <div class="node cat-api" data-id="api">
+        <span class="name">api</span>
+        <span class="tag">FastAPI + Uvicorn</span>
+        <span class="port">:8000</span>
+      </div>
+    </div>
+
+    <div class="row-label">Background work</div>
+    <div class="row">
+      <div class="node cat-worker" data-id="temporal-worker">
+        <span class="name">temporal-worker</span>
+        <span class="tag">Temporal Python worker</span>
+      </div>
+    </div>
+
+    <div class="row-label">Orchestration</div>
+    <div class="row">
+      <div class="node cat-infra" data-id="temporal">
+        <span class="name">temporal</span>
+        <span class="tag">Workflow engine</span>
+        <span class="port">:7233</span>
+      </div>
+    </div>
+
+    <div class="row-label">Data stores</div>
+    <div class="row">
+      <div class="node cat-data" data-id="postgres">
+        <span class="name">postgres</span>
+        <span class="tag">Primary database</span>
+        <span class="port">:5452</span>
+      </div>
+      <div class="node cat-data" data-id="redis">
+        <span class="name">redis</span>
+        <span class="tag">Cache + rate limiting only</span>
+        <span class="port">:6389</span>
+      </div>
+      <div class="node cat-data" data-id="minio">
+        <span class="name">minio</span>
+        <span class="tag">S3-compatible object storage</span>
+        <span class="port">:9010</span>
+      </div>
+    </div>
+
+    <div class="row-label">Observability</div>
+    <div class="row">
+      <div class="node cat-obs" data-id="prometheus">
+        <span class="name">prometheus</span>
+        <span class="tag">Metrics scraper &amp; TSDB</span>
+        <span class="port">:9091</span>
+      </div>
+      <div class="node cat-obs" data-id="grafana">
+        <span class="name">grafana</span>
+        <span class="tag">Metrics dashboards</span>
+        <span class="port">:3001</span>
+      </div>
+    </div>
+
+    <div class="row-label">Dev-only UIs (docker-compose.override.yml)</div>
+    <div class="row">
+      <div class="node cat-ui" data-id="temporal-ui">
+        <span class="name">temporal-ui</span>
+        <span class="tag">Workflow inspector</span>
+        <span class="port">:8080</span>
+      </div>
+      <div class="node cat-ui" data-id="redisinsight">
+        <span class="name">redisinsight</span>
+        <span class="tag">Redis browser</span>
+        <span class="port">:5540</span>
+      </div>
+    </div>
+
+  </div>
+
+  <div class="panel" id="panel">
+    <h2 id="p-name">Pick a component</h2>
+    <div class="kind" id="p-kind">&nbsp;</div>
+    <p class="hint" id="p-body">Click any box on the left. Each one explains what the service is, why it's in this stack, and what talks to it.</p>
+    <ul id="p-list"></ul>
+    <div class="badge-row" id="p-badges"></div>
+  </div>
+</div>
+
+<div class="flows">
+  <h2>How a request actually moves</h2>
+  <div class="flow">
+    <b>1. Sync request</b> — Browser/client hits <code>api</code> (FastAPI). It talks straight to
+    <code>postgres</code> for reads/writes, checks <code>redis</code> for a rate-limit counter and anything cached,
+    then returns a response immediately.
+  </div>
+  <div class="flow">
+    <b>2. Durable multi-step workflow</b> — <code>api</code> starts a workflow on <code>temporal</code> and returns
+    immediately with a document id. The <code>temporal-worker</code> process executes the workflow's steps (activities) —
+    extract → chunk → embed → notify — and Temporal persists progress in <code>postgres</code> after each one, so a crash
+    mid-workflow resumes instead of restarting. Watch it live in <b>Temporal UI</b>. This is the only background-execution
+    path — there's no separate task queue; short jobs are just single-activity workflows.
+  </div>
+  <div class="flow">
+    <b>3. File storage</b> — Any uploaded/generated document goes to <code>minio</code>, which speaks the S3 API — so the same code
+    works against real S3 in staging/production. Reads/writes typically happen inside a workflow activity, not directly in <code>api</code>.
+  </div>
+  <div class="flow">
+    <b>4. Rate limiting</b> — Each request to a protected route runs an atomic Redis check (<code>INCR</code> + <code>PEXPIRE</code>
+    in one Lua script) keyed by client IP — see <code>app/core/rate_limit.py</code>. Atomic means it stays correct even with
+    multiple <code>api</code> replicas checking the same counter concurrently. Inspect the keys in <b>RedisInsight</b>.
+  </div>
+  <div class="flow">
+    <b>5. Metrics</b> — <code>api</code> exposes a <code>/metrics</code> endpoint. <code>prometheus</code> scrapes it on a timer,
+    and <code>grafana</code> queries Prometheus to render dashboards.
+  </div>
+</div>
+
+<script>
+const DATA = {
+  api: {
+    kind: "App code · FastAPI",
+    body: "The main HTTP entry point. Built with FastAPI, served by Uvicorn in dev (with --reload) and by Gunicorn+Uvicorn workers in prod. Handles auth, validation, and orchestrates everything else — it rarely does heavy work itself, it delegates to Temporal for anything multi-step or slow.",
+    list: ["Reads/writes postgres directly via SQLAlchemy", "Starts/queries Temporal workflows on temporal", "Checks redis for cache hits and rate limits (app/core/rate_limit.py)", "Exposes /metrics for Prometheus"],
+    badges: ["FastAPI", "Uvicorn/Gunicorn", "SQLAlchemy"]
+  },
+  "temporal-worker": {
+    kind: "Background work · Temporal (the only background-execution system)",
+    body: "A Python process that hosts Temporal workflow and activity code, and polls temporal for work to execute. Temporal tracks every step's state durably — if this process crashes mid-workflow, another worker resumes exactly where it left off instead of starting over. There's no separate task queue for simpler jobs; a short job is just a single-activity workflow, so everything background goes through one system.",
+    list: ["Connects to temporal on :7233", "Runs DocumentPipelineWorkflow (extract → chunk → embed → notify), defined in app/workflows/", "Activities — the actual I/O each step does — live in app/workers/activities.py", "Scales horizontally: run more replicas, Temporal spreads work across them automatically"],
+    badges: ["Temporal SDK", "Durable execution"]
+  },
+  temporal: {
+    kind: "Orchestration engine",
+    body: "The Temporal server. It stores workflow state and history (in postgres, via the auto-setup image, in its own logical database — kept separate from app data), schedules work for temporal-worker, and gives you replay/retry for free. Think of it as a database + scheduler purpose-built for long-running business processes.",
+    list: ["Persists to postgres (separate DB/schema from app data)", "temporal-worker polls it for tasks", "Inspect visually via temporal-ui", "api being unable to reach it doesn't take down sync CRUD traffic — but new/in-flight pipelines stall"],
+    badges: ["temporalio/auto-setup", "gRPC :7233"]
+  },
+  postgres: {
+    kind: "Data store · relational DB",
+    body: "The system of record. Holds application data (via SQLAlchemy + Alembic migrations) and, separately, Temporal's own workflow-history tables. One instance, two logical consumers — kept in separate databases so a spike in one doesn't starve the other's connection pool.",
+    list: ["Schema migrations: alembic (make migrate / make revision)", "Used by: api directly, and by temporal internally", "No web UI wired up for it — use psql or a local DB client against localhost:5452"],
+    badges: ["PostgreSQL 16", "SQLAlchemy", "Alembic"]
+  },
+  redis: {
+    kind: "Data store · cache + rate limiting only",
+    body: "An in-memory key-value store, deliberately scoped to two jobs: general caching, and atomic rate-limit counters (app/core/rate_limit.py — an INCR+PEXPIRE Lua script, one round trip, safe under concurrent requests and correct across multiple api replicas). It has no task-queue role — that's Temporal's job now, not Redis's.",
+    list: ["Cache for api reads", "Rate-limit counters, keyed per client IP + route", "Browse keys/TTLs with RedisInsight"],
+    badges: ["Redis 7", "In-memory"]
+  },
+  minio: {
+    kind: "Data store · object storage",
+    body: "An S3-API-compatible object store, run locally so you don't need real AWS credentials in dev. api uploads/downloads documents through the S3 API (boto3), and the exact same code points at real S3 in staging/production — only OBJECT_STORAGE_ENDPOINT changes.",
+    list: ["S3-compatible API on :9010", "Web console on :9011", "Swapped for real S3 outside local dev"],
+    badges: ["S3 API", "boto3"]
+  },
+  prometheus: {
+    kind: "Observability · metrics",
+    body: "Pulls (scrapes) metrics from api's /metrics endpoint on a schedule and stores them as time series. It's the backend that Grafana's dashboards query.",
+    list: ["Scrape target: api (via prometheus-fastapi-instrumentator)", "Config: docker/prometheus/prometheus.yml", "Queried by grafana"],
+    badges: ["Prometheus", "PromQL"]
+  },
+  grafana: {
+    kind: "Observability · dashboards",
+    body: "Turns Prometheus's raw time-series data into readable dashboards and graphs — request rates, latencies, error rates, queue depth, etc.",
+    list: ["Data source: prometheus", "No dashboards pre-provisioned yet — build your own as you learn"],
+    badges: ["Grafana"]
+  },
+  "temporal-ui": {
+    kind: "Dev UI",
+    body: "Web UI for Temporal. Lets you see every workflow execution, its current step, its full event history, retries, and failures — essential for understanding what a durable workflow actually did.",
+    list: ["Talks to temporal on :7233", "Dev-only: added in docker-compose.override.yml"],
+    badges: ["temporalio/ui"]
+  },
+  redisinsight: {
+    kind: "Dev UI",
+    body: "Web-based Redis browser — inspect cache entries and rate-limit counter keys/TTLs visually instead of using redis-cli.",
+    list: ["Add database with host 'redis', port 6379", "Dev-only: added in docker-compose.override.yml"],
+    badges: ["RedisInsight"]
+  }
+};
+
+const nameEl = document.getElementById('p-name');
+const kindEl = document.getElementById('p-kind');
+const bodyEl = document.getElementById('p-body');
+const listEl = document.getElementById('p-list');
+const badgesEl = document.getElementById('p-badges');
+
+document.querySelectorAll('.node').forEach(node => {
+  node.addEventListener('click', () => {
+    document.querySelectorAll('.node').forEach(n => n.classList.remove('active'));
+    node.classList.add('active');
+    const d = DATA[node.dataset.id];
+    nameEl.textContent = node.querySelector('.name').textContent;
+    kindEl.textContent = d.kind;
+    bodyEl.className = '';
+    bodyEl.textContent = d.body;
+    listEl.innerHTML = d.list.map(li => `<li>${li}</li>`).join('');
+    badgesEl.innerHTML = d.badges.map(b => `<span class="badge">${b}</span>`).join('');
+  });
+});
+</script>
+
+</body>
+</html>

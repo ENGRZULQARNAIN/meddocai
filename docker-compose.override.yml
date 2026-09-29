@@ -1,0 +1,67 @@
+# Host ports come from *_HOST_PORT in .env (defaults shown). The right-hand
+# side of each mapping is the fixed in-container port.
+# Loaded automatically by `docker compose up` for local development only.
+# Adds hot-reload bind mounts and exposes ports to the host so you can
+# hit services directly from your browser/DB client. None of this
+# belongs in staging or production, which is exactly why it lives in
+# the override file instead of docker-compose.yml.
+
+services:
+  api:
+    build:
+      target: dev
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    volumes:
+      - ./app:/code/app
+    ports:
+      - "${API_HOST_PORT:-8000}:8000"
+
+  temporal-worker:
+    volumes:
+      - ./app:/code/app
+
+  postgres:
+    ports:
+      - "${POSTGRES_HOST_PORT:-5432}:5432"
+
+  redis:
+    ports:
+      - "${REDIS_HOST_PORT:-6379}:6379"
+
+  minio:
+    ports:
+      - "${MINIO_HOST_PORT:-9000}:9000"
+      - "${MINIO_CONSOLE_HOST_PORT:-9001}:9001"     # console: http://localhost:${MINIO_CONSOLE_HOST_PORT}
+
+  temporal:
+    ports:
+      - "${TEMPORAL_HOST_PORT:-7233}:7233"
+
+  prometheus:
+    ports:
+      - "${PROMETHEUS_HOST_PORT:-9090}:9090"
+
+  grafana:
+    ports:
+      - "${GRAFANA_HOST_PORT:-3000}:3000"
+
+  # --- dev-only web UIs ---
+
+  temporal-ui:
+    image: temporalio/ui:latest
+    environment:
+      TEMPORAL_ADDRESS: temporal:7233
+      TEMPORAL_CORS_ORIGINS: http://localhost:${TEMPORAL_UI_HOST_PORT:-8080}
+    depends_on:
+      - temporal
+    ports:
+      - "${TEMPORAL_UI_HOST_PORT:-8080}:8080"   # http://localhost:${TEMPORAL_UI_HOST_PORT}
+    networks: [meddocai]
+
+  redisinsight:
+    image: redis/redisinsight:latest
+    depends_on:
+      - redis
+    ports:
+      - "${REDISINSIGHT_HOST_PORT:-5540}:5540"   # http://localhost:${REDISINSIGHT_HOST_PORT} (host: redis, port 6379) — inspect cache keys + rate-limit counters
+    networks: [meddocai]
